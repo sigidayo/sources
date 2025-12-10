@@ -1,0 +1,7 @@
+[tasks.serve]
+run = [
+    "aidoku package",
+    "aidoku verify ./package.aix",
+    "aidoku serve ./package.aix"
+]
+alias = "s"
