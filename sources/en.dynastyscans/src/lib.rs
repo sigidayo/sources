@@ -1,8 +1,8 @@
 #![no_std]
 
 use aidoku::{
-    AidokuError, Chapter, DeepLinkHandler, DeepLinkResult, FilterValue, Listing, ListingProvider,
-    Manga, MangaPageResult, Page, Source,
+    AidokuError, Chapter, DeepLinkHandler, DeepLinkResult, FilterValue, ImageRequestProvider,
+    Listing, ListingProvider, Manga, MangaPageResult, Page, PageContext, Source,
     alloc::{
         Vec,
         string::{String, ToString},
@@ -14,16 +14,18 @@ use aidoku::{
     println, register_source,
 };
 
-use crate::{
-    model::{DynastyScansManga, SortingOption},
-    net::BatchedRequest,
-};
+use crate::model::{DynastyScansManga, SortingOption};
 
 mod home;
 mod model;
-mod net;
 
 const BASE_URL: &str = "https://dynasty-scans.com";
+const COVER_QUERY_PARAMETERS_FLAG: &str = "?dsCover";
+
+mod selectors {
+    pub const SEARCH_ENTRY: &str = ".chapter-list a.name";
+    pub const PAGINATION_COUNT: &str = "div.pagination a";
+}
 
 pub struct DynastyScans;
 
@@ -84,7 +86,7 @@ impl Source for DynastyScans {
         let html = Request::get(&url)?.html()?;
 
         let total_pages = html
-            .select("div.pagination a")
+            .select(selectors::PAGINATION_COUNT)
             .into_iter()
             .flat_map(|el| el.map(|x| x.text()))
             .flatten()
@@ -92,18 +94,25 @@ impl Source for DynastyScans {
             .max()
             .unwrap_or(1);
 
-        let request_urls: Vec<String> = html
-            .select(".chapter-list a.name")
+        let entries = html
+            .select(selectors::SEARCH_ENTRY)
             .into_iter()
             .flatten()
-            .filter_map(|el| el.attr("href"))
-            .map(|href| format!("{BASE_URL}{href}.json"))
+            .filter_map(|element| {
+                let title = element.text()?;
+                let url = element.attr("href")?;
+                Some(Manga {
+                    key: url[1..].to_string(),
+                    title,
+                    cover: Some(format!("{BASE_URL}{}{COVER_QUERY_PARAMETERS_FLAG}", url)),
+                    tags: None,
+                    ..Default::default()
+                })
+            })
             .collect();
 
-        let responses: Vec<DynastyScansManga> = BatchedRequest::new(request_urls).get_jsons()?;
-
         Ok(MangaPageResult {
-            entries: responses.into_iter().map(|m| m.into()).collect(),
+            entries,
             has_next_page: page < total_pages,
         })
     }
@@ -122,6 +131,37 @@ impl Source for DynastyScans {
     }
 }
 
+// Because currently in the wasm bindings there is no way to send a partial `MangaPageResult`. The search ui has to wait for all detailed manga requests to get the cover before the ui becomes interactable.
+// In this however, we set the cover url as the url to the manga itself with an additional flag and defer loading them until the ui has loaded.
+// Then in the implementation below, we can simplify filter for urls with the flag and handle them accordingly.
+//
+// A rough benchmark of how long it takes to load an interactable ui with images enabled
+// - Singular requests: 20~ seconds
+// - Concurrent requests: 8~ seconds
+// - This method: <1~ second
+// Obviously hijacking a trait meant for adding extra headers to image requests is less than ideal, but the pros definitely outweigh the cons.
+impl ImageRequestProvider for DynastyScans {
+    fn get_image_request(
+        &self,
+        url: String,
+        _context: Option<PageContext>,
+    ) -> aidoku::Result<Request> {
+        Ok(match url.find(COVER_QUERY_PARAMETERS_FLAG) {
+            Some(flag_idx) => {
+                let url = format!("{}.json", &url[..flag_idx]);
+                let details = Request::get(url)?.json_owned::<DynastyScansManga>()?;
+                Request::get(format!(
+                    "{BASE_URL}{}",
+                    details
+                        .cover_url
+                        .ok_or(AidokuError::message("Missing cover image"))?
+                ))?
+            }
+            None => Request::get(url)?,
+        })
+    }
+}
+
 impl ListingProvider for DynastyScans {
     fn get_manga_list(&self, _listing: Listing, _page: i32) -> aidoku::Result<MangaPageResult> {
         Err(AidokuError::Unimplemented)
@@ -134,4 +174,10 @@ impl DeepLinkHandler for DynastyScans {
     }
 }
 
-register_source!(DynastyScans, ListingProvider, Home, DeepLinkHandler);
+register_source!(
+    DynastyScans,
+    ListingProvider,
+    ImageRequestProvider,
+    Home,
+    DeepLinkHandler
+);

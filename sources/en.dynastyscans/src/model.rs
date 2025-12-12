@@ -37,7 +37,7 @@ impl From<DynastyScansManga> for Manga {
             url: Some(format!("{BASE_URL}/{}/{}", val.r#type, val.permalink)),
             key: val.permalink,
             title: val.name,
-            cover: val.cover_url.map(|url| format!("{BASE_URL}/{}", url)),
+            cover: val.cover_url.map(|url| format!("{BASE_URL}{}", url)),
             artists: None,
             authors: None,
             description: val.description,
