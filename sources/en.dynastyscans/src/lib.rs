@@ -15,7 +15,7 @@ use aidoku::{
     println, register_source,
 };
 
-use crate::model::{DynastyScansManga, SortingOption};
+use crate::model::{DynastyScansChapter, DynastyScansManga, SortingOption};
 
 mod home;
 mod model;
@@ -132,8 +132,19 @@ impl Source for DynastyScans {
         Ok(manga)
     }
 
-    fn get_page_list(&self, _manga: Manga, _chapter: Chapter) -> aidoku::Result<Vec<Page>> {
-        Err(AidokuError::Unimplemented)
+    fn get_page_list(&self, _manga: Manga, chapter: Chapter) -> aidoku::Result<Vec<Page>> {
+        let url = format!(
+            "{}.json",
+            chapter
+                .url
+                .ok_or(AidokuError::Message("Missing chapter url".to_string()))?,
+        );
+        Ok(Request::get(url)?
+            .json_owned::<DynastyScansChapter>()?
+            .pages
+            .into_iter()
+            .map(Page::from)
+            .collect())
     }
 }
 

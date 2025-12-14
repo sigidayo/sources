@@ -1,7 +1,7 @@
 use core::fmt::{Display, Formatter};
 
 use aidoku::{
-    AidokuError, Chapter, ContentRating, Manga, MangaStatus, UpdateStrategy,
+    AidokuError, Chapter, ContentRating, Manga, MangaStatus, Page, PageContent, UpdateStrategy,
     alloc::{String, Vec, string::ToString, vec},
     imports::{html::Html, std},
     prelude::format,
@@ -36,6 +36,16 @@ pub enum DynastyScansTag {
     Author { name: String },
     General { name: String },
     Status { name: String },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DynastyScansChapter {
+    pub pages: Vec<DynastyScansPage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DynastyScansPage {
+    pub url: String,
 }
 
 #[derive(Debug, Default)]
@@ -117,12 +127,13 @@ impl From<DynastyScansManga> for Manga {
             ),
             status,
             content_rating: val.content_rating(),
+            viewer: Default::default(), // TODO deduce preferred viewer from tags
             update_strategy: match status {
                 MangaStatus::Completed | MangaStatus::Cancelled => UpdateStrategy::Never,
                 _ => UpdateStrategy::Always,
             },
             chapters: Some(val.chapters),
-            key: val.permalink,
+            key: format!("{}/{}", val.r#type, val.permalink),
             title: val.name,
             ..Default::default()
         }
@@ -135,6 +146,15 @@ impl Display for DynastyScansMangaType {
             DynastyScansMangaType::Anthology => write!(f, "anthology"),
             DynastyScansMangaType::Doujin => write!(f, "doujin"),
             DynastyScansMangaType::Series => write!(f, "series"),
+        }
+    }
+}
+
+impl From<DynastyScansPage> for Page {
+    fn from(value: DynastyScansPage) -> Self {
+        Page {
+            content: PageContent::Url(format!("{BASE_URL}{}", value.url), None),
+            ..Default::default()
         }
     }
 }
