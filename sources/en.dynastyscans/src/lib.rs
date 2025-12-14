@@ -1,8 +1,9 @@
 #![no_std]
 
 use aidoku::{
-    AidokuError, Chapter, DeepLinkHandler, DeepLinkResult, FilterValue, ImageRequestProvider,
-    Listing, ListingProvider, Manga, MangaPageResult, Page, PageContext, Source,
+    AidokuError, Chapter, ContentRating, DeepLinkHandler, DeepLinkResult, FilterValue,
+    ImageRequestProvider, Listing, ListingProvider, Manga, MangaPageResult, Page, PageContext,
+    Source,
     alloc::{
         Vec,
         string::{String, ToString},
@@ -105,7 +106,7 @@ impl Source for DynastyScans {
                     key: url[1..].to_string(),
                     title,
                     cover: Some(format!("{BASE_URL}{}{COVER_QUERY_PARAMETERS_FLAG}", url)),
-                    tags: None,
+                    content_rating: ContentRating::Unknown, // TODO fill based on tags in search
                     ..Default::default()
                 })
             })
@@ -119,11 +120,16 @@ impl Source for DynastyScans {
 
     fn get_manga_update(
         &self,
-        _manga: Manga,
-        _needs_details: bool,
-        _needs_chapters: bool,
+        mut manga: Manga,
+        needs_details: bool,
+        needs_chapters: bool,
     ) -> aidoku::Result<Manga> {
-        Err(AidokuError::Unimplemented)
+        if needs_details || needs_chapters {
+            let url = format!("{BASE_URL}/{}.json", manga.key);
+            let res = Request::get(&url)?.json_owned::<DynastyScansManga>()?;
+            manga.copy_from(res.into());
+        }
+        Ok(manga)
     }
 
     fn get_page_list(&self, _manga: Manga, _chapter: Chapter) -> aidoku::Result<Vec<Page>> {
