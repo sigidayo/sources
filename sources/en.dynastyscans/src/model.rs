@@ -34,7 +34,9 @@ pub enum DynastyScansMangaType {
 #[serde(tag = "type")]
 pub enum DynastyScansTag {
     Author { name: String },
+    Doujin { name: String },
     General { name: String },
+    Pairing { name: String },
     Status { name: String },
 }
 
@@ -93,7 +95,9 @@ impl DynastyScansTag {
     fn name(&self) -> &str {
         match self {
             DynastyScansTag::Author { name } => name,
+            DynastyScansTag::Doujin { name } => name,
             DynastyScansTag::General { name } => name,
+            DynastyScansTag::Pairing { name } => name,
             DynastyScansTag::Status { name } => name,
         }
     }
